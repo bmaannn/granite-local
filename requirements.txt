@@ -3,16 +3,14 @@
 #
 # Note: torch is required for silero-vad. The CPU-only build is ~200 MB
 # vs ~2 GB for CUDA. On Apple Silicon, MPS is available via the standard
-# torch build below. If you are on Intel Mac and want to save space,
-# install torch from https://pytorch.org with the CPU-only option.
+# torch build below.
 
 # ── Audio capture ─────────────────────────────────────────────────────────────
 sounddevice>=0.4.6          # Cross-platform low-latency mic access via PortAudio
 
 # ── Voice Activity Detection ─────────────────────────────────────────────────
-torch>=2.1.0                # Required by silero-vad (torch.hub model)
-# silero-vad is loaded via torch.hub.load() at runtime — no pip package needed.
-# It downloads ~2 MB on first use and caches in ~/.cache/torch/hub/
+torch>=2.1.0                # Required by silero-vad
+silero-vad>=5.1             # VAD model (pip package — audio.py imports silero_vad)
 
 # ── Speech-to-Text ────────────────────────────────────────────────────────────
 faster-whisper>=1.0.0       # CTranslate2-optimised Whisper (4–8× faster than whisper.py)
@@ -26,7 +24,10 @@ pynput>=1.7.6               # Global keyboard listener (works without focus)
 
 # ── Text injection ────────────────────────────────────────────────────────────
 pyperclip>=1.8.2            # Cross-platform clipboard read/write
-pyautogui>=0.9.54           # Keyboard simulation (Cmd+V)
+
+# ── Overlay UI + CGEvent paste (macOS native) ────────────────────────────────
+pyobjc-framework-Cocoa>=10.0   # AppKit/NSPanel for the status overlay
+pyobjc-framework-Quartz>=10.0  # Core Animation + CGEvent Cmd+V injection
 
 # ── Numeric utilities ────────────────────────────────────────────────────────
 numpy>=1.24.0               # Audio array manipulation

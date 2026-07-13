@@ -10,11 +10,9 @@ Usage:
 Hold Right-Cmd (⌘) to record. Release to transcribe, polish, and paste.
 Press Ctrl+C to quit.
 
-Latency expectations (total end-to-end, 5–10s of speech):
-  M3 Pro / Max (36 GB+) : ~0.7–1.5s  ← near real-time
-  M2 MacBook Pro (16 GB) : ~1.3–2.5s ← smooth
-  M1 MacBook Air (8 GB)  : ~2.5–5.0s ← noticeable pause
-  Intel Mac (16 GB)       : ~7–14s   ← frustrating; use medium.en
+Measured felt latency on M1 16GB (key release → text pasted, models warm):
+  short dictation (~2s)  : ~1.9s
+  long dictation (~14s)  : ~3.1s  (phrases transcribe while you speak)
 
 macOS permissions required before running:
   1. Microphone        — System Settings → Privacy → Microphone
@@ -29,16 +27,22 @@ import threading
 from pynput import keyboard
 
 import audio
+import stream
 import transcribe
 import polish
 import inject
 import overlay
+import history
+import history_ui
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 # The key that triggers record-on-hold / stop-on-release.
 # Blueprint spec: Right-Cmd. Change to e.g. keyboard.Key.alt_r for Right-Alt.
 HOTKEY = keyboard.Key.cmd_r
+
+# Tap this key to toggle the dictation-history panel (click an entry to paste).
+HISTORY_HOTKEY = keyboard.Key.alt_r
 
 # If True, show a visual indicator in the terminal while recording.
 VERBOSE_STATUS = True
@@ -62,25 +66,17 @@ def _run_pipeline():
     Pynput callbacks must return quickly; blocking them causes missed events.
     """
     with _pipeline_lock:
-        # ── Stage 1: Stop recording, get VAD-trimmed audio ─────────────────
+        # ── Stage 1+2: Stop recording, drain streaming transcription ───────
+        # Phrases spoken earlier were already transcribed in the background
+        # while the key was held — stop() only transcribes the final phrase.
         t0 = time.perf_counter()
-        audio_data = audio.stop_recording()
-
-        if audio_data is None:
-            _status("No speech detected.")
-            overlay.hide()
-            return
-
-        t1 = time.perf_counter()
-
-        # ── Stage 2: Transcribe (faster-whisper) ───────────────────────────
         _status("Transcribing…")
         overlay.transcribing()
-        raw_text = transcribe.run(audio_data)
+        raw_text = stream.stop()
         t2 = time.perf_counter()
 
         if not raw_text.strip():
-            _status("Nothing to transcribe.")
+            _status("No speech detected.")
             overlay.hide()
             return
 
@@ -101,10 +97,16 @@ def _run_pipeline():
 
         overlay.done()
 
+        # ── Save to history (best-effort; never break the pipeline) ────────
+        try:
+            history.add(raw_text, polished_text)
+        except Exception as exc:
+            _status(f"history save failed: {exc}")
+
         # ── Timing report ──────────────────────────────────────────────────
         _status(
             f"Done in {t4-t0:.2f}s  "
-            f"[VAD: {t1-t0:.2f}s | STT: {t2-t1:.2f}s | "
+            f"[STT drain: {t2-t0:.2f}s | "
             f"LLM: {t3-t2:.2f}s | Inject: {t4-t3:.2f}s]"
         )
 
@@ -112,6 +114,10 @@ def _run_pipeline():
 # ── Hotkey callbacks ──────────────────────────────────────────────────────────
 
 def on_press(key):
+    if key == HISTORY_HOTKEY:
+        history_ui.toggle()
+        return
+
     # Ignore anything that isn't exactly Right-Cmd.
     if key != HOTKEY:
         return
@@ -130,6 +136,7 @@ def on_press(key):
     audio.on_level = overlay.level
 
     audio.start_recording()
+    stream.start()
     overlay.recording()
     _status("● Recording…  (release ⌘ to stop)")
 
@@ -167,6 +174,17 @@ def _warm_up():
 
     Blueprint is silent on warm-up; added as a UX best practice.
     """
+    # Fail loudly if we can't post keystrokes — otherwise every dictation
+    # would silently vanish (CGEventPost drops events without Accessibility).
+    if not inject.check_post_event_access():
+        print(
+            "\n[wispr] ⚠️  PASTE WILL NOT WORK — Accessibility permission missing.\n"
+            "        Grant it to your terminal app in:\n"
+            "        System Settings → Privacy & Security → Accessibility\n"
+            "        (macOS should have just shown a prompt. After granting,\n"
+            "        QUIT and RESTART this app — macOS applies it on launch.)\n"
+        )
+
     print("[wispr] Warming up models (first run may take 30–60s) …")
     import numpy as np
 
@@ -183,7 +201,8 @@ def _warm_up():
     except Exception as exc:
         print(f"[wispr] Ollama warm-up warning: {exc}")
 
-    print("[wispr] Ready. Hold Right-⌘ to dictate. Ctrl+C to quit.\n")
+    print("[wispr] Ready. Hold Right-⌘ to dictate. Tap Right-⌥ for history. "
+          "Ctrl+C to quit.\n")
 
 
 # Expose SAMPLE_RATE for warm-up dummy audio generation.

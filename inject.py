@@ -17,6 +17,29 @@ CLIPBOARD_SETTLE_S = 0.08
 # How long after pasting before restoring original clipboard.
 RESTORE_DELAY_S = 0.20
 
+# ── Permission check ──────────────────────────────────────────────────────────
+
+def check_post_event_access() -> bool:
+    """
+    Return True if this process may post synthetic keystrokes (Cmd+V).
+
+    Without Accessibility permission, CGEventPost fails SILENTLY — the paste
+    just never happens. Call this at startup so the user finds out immediately.
+    Calling CGRequestPostEventAccess registers the app in System Settings →
+    Privacy & Security → Accessibility and shows the system prompt.
+    """
+    try:
+        from Quartz import CGPreflightPostEventAccess, CGRequestPostEventAccess
+    except ImportError:
+        return True  # can't check — assume OK, osascript fallback may still work
+
+    if CGPreflightPostEventAccess():
+        return True
+
+    CGRequestPostEventAccess()  # triggers the macOS permission prompt
+    return False
+
+
 # ── Try pyobjc CGEvent path ───────────────────────────────────────────────────
 
 def _paste_cgevent(text: str) -> bool:

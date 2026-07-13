@@ -100,6 +100,13 @@ class _Recorder:
                 return None
             return np.concatenate(self._chunks)
 
+    def snapshot(self) -> np.ndarray | None:
+        """Concatenated copy of everything captured so far, without stopping."""
+        with self._lock:
+            if not self._chunks:
+                return None
+            return np.concatenate(self._chunks)
+
 
 _recorder = _Recorder()
 
@@ -135,6 +142,33 @@ def stop_recording() -> np.ndarray | None:
     return trimmed
 
 
+def stop_recording_raw() -> np.ndarray | None:
+    """Stop capturing and return the raw untrimmed audio (streaming mode)."""
+    return _recorder.stop()
+
+
+def snapshot() -> np.ndarray | None:
+    """Copy of all audio captured so far, without stopping (streaming mode)."""
+    return _recorder.snapshot()
+
+
+def vad_segments(audio: np.ndarray) -> list[dict]:
+    """
+    Run Silero VAD on `audio` and return speech segments as a list of
+    {"start": sample, "end": sample} dicts (empty list if no speech).
+    """
+    model = _load_vad()
+    return get_speech_timestamps(
+        torch.from_numpy(audio),
+        model,
+        sampling_rate=SAMPLE_RATE,
+        threshold=VAD_THRESHOLD,
+        min_speech_duration_ms=int(MIN_SPEECH_DURATION * 1000),
+        min_silence_duration_ms=200,
+        speech_pad_ms=100,   # keep a little context so word onsets aren't clipped
+    )
+
+
 # ── VAD trim ─────────────────────────────────────────────────────────────────
 
 def _vad_trim(audio: np.ndarray) -> np.ndarray | None:
@@ -143,21 +177,7 @@ def _vad_trim(audio: np.ndarray) -> np.ndarray | None:
 
     Input must be a 1-D float32 NumPy array at 16 kHz.
     """
-    model = _load_vad()
-
-    # get_speech_timestamps is imported directly from silero_vad pip package.
-    audio_tensor = torch.from_numpy(audio)
-
-    speech_timestamps = get_speech_timestamps(
-        audio_tensor,
-        model,
-        sampling_rate=SAMPLE_RATE,
-        threshold=VAD_THRESHOLD,
-        min_speech_duration_ms=int(MIN_SPEECH_DURATION * 1000),
-        # Merge segments closer than 200 ms to avoid choppy splits.
-        min_silence_duration_ms=200,
-    )
-
+    speech_timestamps = vad_segments(audio)
     if not speech_timestamps:
         return None
 

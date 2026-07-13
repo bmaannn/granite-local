@@ -1,46 +1,62 @@
 # wispr-local 🎙️
 
-A fully local Wispr Flow clone — hold-to-talk AI dictation that works in every app.  
+A fully local Wispr Flow clone — hold-to-talk AI dictation that works in every app.
 **No cloud. No API keys. No subscriptions.** Runs entirely on your Mac.
 
 ```
-[Hold Right-⌘] → Record → Release → Transcribe → Polish → Paste ✓
+[Hold Right-⌘] → Speak (phrases transcribe live) → Release → Polish → Paste ✓
 ```
+
+While you talk, a Wispr-style **orange waveform pill** floats at the bottom of
+your screen, reacting to your voice. Finished phrases are transcribed in the
+background *while you're still speaking* — so when you release the key, only
+your last phrase remains, and the text lands in ~1–3 seconds.
 
 ---
 
 ## Architecture
 
 ```
-Audio Capture    Speech-to-Text       AI Polish           Text Injection
-(sounddevice     (faster-whisper      (Ollama LLM         (pyperclip +
- + silero-vad)    large-v3-turbo)      qwen2.5:7b)         pyautogui Cmd+V)
-      │                  │                  │                    │
-   [Stage 1]          [Stage 2]          [Stage 3]           [Stage 4]
+Audio Capture       Streaming STT          AI Polish           Text Injection
+(sounddevice        (faster-whisper,       (Ollama LLM         (clipboard +
+ + silero-vad)       phrase-by-phrase       qwen2.5:3b)         CGEvent Cmd+V)
+      │               while speaking)           │                    │
+   [Stage 1]          [Stage 2]              [Stage 3]           [Stage 4]
 ```
 
 | File | Responsibility |
 |------|---------------|
-| `audio.py` | Mic capture + Silero VAD silence trimming |
+| `audio.py` | Mic capture + Silero VAD (segmentation + trimming) |
+| `stream.py` | Streaming transcription — phrases transcribe while you speak |
 | `transcribe.py` | faster-whisper STT → raw transcript |
 | `polish.py` | Ollama LLM → clean polished text |
-| `inject.py` | Clipboard paste into any focused app |
+| `inject.py` | Clipboard + CGEvent Cmd+V paste into any focused app |
+| `overlay.py` | Overlay controller (talks to the pill subprocess) |
+| `overlay_process.py` | The orange waveform pill (Cocoa/Core Animation) |
 | `main.py` | Hotkey listener + pipeline orchestration |
 
 ---
 
-## Latency Benchmarks
+## Measured Latency (M1 MacBook, 16 GB)
 
-End-to-end time from key release to text appearing (5–10s of speech):
+Felt latency = key release → text pasted. Models warm (after first use).
 
-| Hardware | Whisper | Ollama Polish | **Total** |
-|----------|---------|---------------|-----------|
-| M3 Pro / Max (36 GB+) | ~0.3–0.6s | ~0.4–0.8s | **~0.7–1.5s** ✅ |
-| M2 MacBook Pro (16 GB) | ~0.5–1.0s | ~0.8–1.5s | **~1.3–2.5s** ✅ |
-| M1 MacBook Air (8 GB) | ~1.0–1.8s | ~1.5–3.0s | **~2.5–5.0s** ⚠️ |
-| Intel Mac (16 GB) | ~3–6s | ~4–8s | **~7–14s** ❌ |
+| Dictation | STT drain | Polish | **Felt latency** |
+|-----------|-----------|--------|------------------|
+| Short (~2s speech) | ~1.1s | ~0.7s | **~1.9s** |
+| Long (~14s speech) | ~0.9s | ~2.1s | **~3.1s** |
 
-> **Tip for slow hardware:** In `transcribe.py` change `MODEL_SIZE = "medium.en"` and in `polish.py` change `OLLAMA_MODEL = "llama3.2:3b"` to cut total latency by ~60%.
+Long dictations drain *faster* than short ones because phrases were already
+transcribed while you were talking.
+
+**Whisper model benchmark** (same machine, time to transcribe 2.3s / 14.3s of speech):
+
+| Model | Short | Long | Notes |
+|-------|-------|------|-------|
+| `base.en` | 0.5s | 1.3s | fastest — try it via `WISPR_WHISPER_MODEL=base.en` |
+| `distil-small.en` | 1.1s | 1.5s | **default** — best speed/accuracy balance |
+| `small.en` | 1.8s | 4.9s | |
+| `large-v3-turbo` | 4.1s | 5.1s | most accurate; too slow on base M1 |
 
 ---
 
@@ -48,132 +64,87 @@ End-to-end time from key release to text appearing (5–10s of speech):
 
 ### 1. Install Ollama
 
-Download from **https://ollama.com** and install. Then pull your model:
+Download from **https://ollama.com** and install. Then pull the polish model:
 
 ```bash
-# Start the Ollama background server
-ollama serve &
-
-# Pull the AI polish model (4.4 GB download, one-time)
-ollama pull qwen2.5:7b
-
-# Verify it works
-ollama run qwen2.5:7b "Say hello"
+ollama serve &            # start the background server (skip if running)
+ollama pull qwen2.5:3b    # ~2 GB download, one-time
 ```
 
-> Alternative models — edit `OLLAMA_MODEL` in `polish.py`:
-> - `llama3.1:8b` — slightly higher quality
-> - `llama3.2:3b` — fastest, good for M1 Air
-> - `phi4:14b` — best quality, needs 16 GB+ RAM
-
----
+> Alternative models — set `WISPR_MODEL` or edit `polish.py`:
+> - `llama3.2:3b` — similar speed, slightly less faithful
+> - `qwen2.5:7b` — higher quality if you can spare ~1s extra latency
 
 ### 2. Install Homebrew System Dependencies
 
 ```bash
-# Install Homebrew if you don't have it
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
-# PortAudio — required by sounddevice for low-latency mic access
-brew install portaudio
-
-# FFmpeg — required by faster-whisper for audio decoding
-brew install ffmpeg
+brew install portaudio    # required by sounddevice for mic access
 ```
-
----
 
 ### 3. Set Up Python Environment
 
 ```bash
-cd ~/Desktop/wispr-local
-
-# Create isolated virtual environment (Python 3.11+ recommended)
+cd wispr-local
 python3 -m venv venv
 source venv/bin/activate
-
-# Install all dependencies
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-> **Apple Silicon note:** PyTorch will use MPS (Metal Performance Shaders)
-> automatically for faster inference. No extra steps needed.
-
----
-
 ### 4. Grant macOS Permissions
 
-This app needs **three permissions**. Grant each to **Terminal.app** (or
-whatever app you launch Python from):
+Grant each to **Terminal.app** (or whatever app you launch Python from):
 
-1. **Microphone**  
-   System Settings → Privacy & Security → Microphone → ✅ Terminal
+1. **Microphone** — System Settings → Privacy & Security → Microphone
+2. **Accessibility** — System Settings → Privacy & Security → Accessibility *(for the Cmd+V paste)*
+3. **Input Monitoring** — System Settings → Privacy & Security → Input Monitoring *(for the global hotkey)*
 
-2. **Accessibility** *(required for pyautogui to simulate Cmd+V)*  
-   System Settings → Privacy & Security → Accessibility → ✅ Terminal
-
-3. **Input Monitoring** *(required for pynput global hotkey listener)*  
-   System Settings → Privacy & Security → Input Monitoring → ✅ Terminal
-
-> If you use VS Code, iTerm2, or another terminal, grant the permissions to
-> that app instead. macOS may prompt you automatically on first run.
+macOS usually prompts automatically on first run.
 
 ---
 
 ## Running
 
 ```bash
-# Make sure you're in the venv and Ollama is running
 source venv/bin/activate
 ollama serve &   # skip if already running
-
-# Launch wispr-local
 python main.py
 ```
 
-On first run, the Whisper model downloads (~1.5 GB for large-v3-turbo) and
-loads into memory. Subsequent runs start in ~2–5 seconds.
+On first run the Whisper model downloads (~500 MB for distil-small.en) and both
+models warm up (~30–60s). Subsequent dictations are fast.
 
 **Using it:**
-1. Click anywhere you want text to appear (email, Slack, Notes, any text field)
-2. **Hold Right-⌘** and speak naturally
-3. **Release Right-⌘** — watch the terminal for status
-4. Polished text appears at your cursor within 1–5 seconds
-5. **Ctrl+C** in the terminal to quit
+1. Click anywhere you want text to appear
+2. **Hold Right-⌘** and speak — the orange waveform pill appears and reacts to your voice
+3. **Release Right-⌘** — the pill ripples while it finishes up
+4. Polished text appears at your cursor in ~1–3 seconds
 
 ---
 
 ## Customisation
 
 ### Change the hotkey
-In `main.py`, edit:
+In `main.py`:
 ```python
 HOTKEY = keyboard.Key.cmd_r   # Right-Cmd (default)
 # HOTKEY = keyboard.Key.alt_r # Right-Alt alternative
-# HOTKEY = keyboard.Key.f13   # F13 if you have a full keyboard
+```
+
+### Swap models (no code edits)
+```bash
+WISPR_WHISPER_MODEL=base.en WISPR_MODEL=qwen2.5:7b python main.py
 ```
 
 ### Tune AI polish rules
-In `polish.py`, edit `SYSTEM_PROMPT` to add personal rules:
+Edit `SYSTEM_PROMPT` in `polish.py` — e.g. add personal snippet rules:
 ```
-Always use em dashes instead of commas for asides.
-Never use the word "utilize" — use "use" instead.
-Always spell "Salesforce" with a capital S and F.
+If the speaker says "calendar link", replace it with: https://calendly.com/yourname
 ```
 
-### Add snippet shortcuts
-In `polish.py` `SYSTEM_PROMPT`, add:
-```
-If the user says "calendar link", replace it with: https://calendly.com/yourname
-If the user says "my email", replace it with: you@company.com
-```
-
-### Switch to English-only (faster)
-In `transcribe.py`:
-```python
-MODEL_SIZE = "medium.en"   # ~40% faster, English only
-```
+### Tune streaming behaviour
+In `stream.py`: `SILENCE_CLOSE_S` (how much silence "closes" a phrase) and
+`POLL_INTERVAL_S` (how often the worker checks for new phrases).
 
 ---
 
@@ -182,36 +153,10 @@ MODEL_SIZE = "medium.en"   # ~40% faster, English only
 | Problem | Fix |
 |---------|-----|
 | `No module named 'sounddevice'` | Run `pip install -r requirements.txt` inside the venv |
-| `PortAudio not found` | Run `brew install portaudio` then re-install sounddevice |
-| `Ollama not reachable` | Run `ollama serve` in a separate terminal tab |
-| `Model not found` | Run `ollama pull qwen2.5:7b` |
-| Text not pasting | Grant Accessibility permission to Terminal in System Settings |
-| Hotkey not detected | Grant Input Monitoring permission to Terminal |
-| Microphone not recording | Grant Microphone permission to Terminal |
-| Whisper taking >10s | Switch to `medium.en` in `transcribe.py` |
-| `BLANK_AUDIO` in output | Speak louder / closer to mic; check mic input in System Settings |
-
----
-
-## Project Structure
-
-```
-wispr-local/
-├── main.py          # Pipeline orchestrator + hotkey listener
-├── audio.py         # Mic capture + Silero VAD silence trimming
-├── transcribe.py    # faster-whisper speech-to-text
-├── polish.py        # Ollama LLM text polishing
-├── inject.py        # Clipboard paste text injection
-├── requirements.txt # Python dependencies
-└── README.md        # This file
-```
-
----
-
-## How It Works (Technical Summary)
-
-1. **Hold Right-⌘** → `pynput` fires `on_press` → `audio.start_recording()` opens a `sounddevice.InputStream`
-2. **Release Right-⌘** → `audio.stop_recording()` closes the stream, runs Silero VAD to trim silence, returns a `float32` NumPy array at 16 kHz
-3. **`transcribe.run(audio)`** → `faster-whisper` transcribes to raw text (fillers, stammers intact)
-4. **`polish.run(raw_text)`** → Ollama's `/v1/chat/completions` endpoint (same as OpenAI API) removes fillers, fixes grammar, preserves tone
-5. **`inject.paste(polished_text)`** → saves clipboard, writes text, simulates `Cmd+V`, restores clipboard
+| `PortAudio not found` | `brew install portaudio` then reinstall sounddevice |
+| `Ollama not reachable` | Run `ollama serve` in another terminal |
+| Polish falls back to raw text | `ollama pull qwen2.5:3b` |
+| Text not pasting | Grant Accessibility permission to your terminal |
+| Hotkey not detected | Grant Input Monitoring permission to your terminal |
+| No waveform pill appears | Check `pip show pyobjc-framework-Cocoa` installed cleanly |
+| Transcription inaccurate | Try `WISPR_WHISPER_MODEL=small.en` (or `large-v3-turbo` on M-series Pro/Max) |

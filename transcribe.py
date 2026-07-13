@@ -18,10 +18,13 @@ from faster_whisper import WhisperModel
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-# large-v3-turbo gives Wispr-Flow-level accuracy. medium.en is faster but
-# mishears too often — not worth the tradeoff.
-# Override with: WISPR_WHISPER_MODEL=medium.en python main.py
-MODEL_SIZE = os.getenv("WISPR_WHISPER_MODEL", "large-v3-turbo")
+# Benchmarked on M1 16GB (time to transcribe a 2.3s phrase / 14.3s dictation):
+#   base.en          0.5s / 1.3s   — fastest; try it if accuracy holds for you
+#   distil-small.en  1.1s / 1.5s   — best speed/accuracy balance  ← DEFAULT
+#   small.en         1.8s / 4.9s
+#   large-v3-turbo   4.1s / 5.1s   — most accurate, too slow on base M1
+# Override with: WISPR_WHISPER_MODEL=base.en python main.py
+MODEL_SIZE = os.getenv("WISPR_WHISPER_MODEL", "distil-small.en")
 
 DEVICE       = "cpu"
 COMPUTE_TYPE = "int8"   # int8 quantisation — fastest on CPU/Apple Silicon
