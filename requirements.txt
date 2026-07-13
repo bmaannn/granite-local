@@ -1,0 +1,32 @@
+# wispr-local requirements
+# Install with: pip install -r requirements.txt
+#
+# Note: torch is required for silero-vad. The CPU-only build is ~200 MB
+# vs ~2 GB for CUDA. On Apple Silicon, MPS is available via the standard
+# torch build below. If you are on Intel Mac and want to save space,
+# install torch from https://pytorch.org with the CPU-only option.
+
+# ── Audio capture ─────────────────────────────────────────────────────────────
+sounddevice>=0.4.6          # Cross-platform low-latency mic access via PortAudio
+
+# ── Voice Activity Detection ─────────────────────────────────────────────────
+torch>=2.1.0                # Required by silero-vad (torch.hub model)
+# silero-vad is loaded via torch.hub.load() at runtime — no pip package needed.
+# It downloads ~2 MB on first use and caches in ~/.cache/torch/hub/
+
+# ── Speech-to-Text ────────────────────────────────────────────────────────────
+faster-whisper>=1.0.0       # CTranslate2-optimised Whisper (4–8× faster than whisper.py)
+
+# ── AI Polish ─────────────────────────────────────────────────────────────────
+openai>=1.30.0              # Used as the HTTP client for Ollama's /v1 endpoint
+                            # (Ollama exposes an OpenAI-compatible REST API)
+
+# ── Hotkey listener ───────────────────────────────────────────────────────────
+pynput>=1.7.6               # Global keyboard listener (works without focus)
+
+# ── Text injection ────────────────────────────────────────────────────────────
+pyperclip>=1.8.2            # Cross-platform clipboard read/write
+pyautogui>=0.9.54           # Keyboard simulation (Cmd+V)
+
+# ── Numeric utilities ────────────────────────────────────────────────────────
+numpy>=1.24.0               # Audio array manipulation
