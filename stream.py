@@ -94,7 +94,11 @@ def _worker_loop():
                     phrase = tail[start:end]
                     dur = len(phrase) / audio.SAMPLE_RATE
                     t0 = time.perf_counter()
-                    text = transcribe.run(phrase)
+                    # Pass recent transcript as context — Whisper decodes a
+                    # phrase noticeably better when it knows what preceded it
+                    # (names, terminology, sentence flow).
+                    context = " ".join(_texts)[-400:] or None
+                    text = transcribe.run(phrase, initial_prompt=context)
                     if text.strip():
                         _texts.append(text.strip())
                     print(f"[stream] Phrase ({dur:.1f}s) transcribed "

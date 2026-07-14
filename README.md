@@ -40,23 +40,26 @@ Audio Capture       Streaming STT          AI Polish           Text Injection
 ## Measured Latency (M1 MacBook, 16 GB)
 
 Felt latency = key release → text pasted. Models warm (after first use).
+Default backend on Apple Silicon is **mlx-whisper `large-v3-turbo` on the GPU** —
+the most accurate Whisper, at interactive speed.
 
 | Dictation | STT drain | Polish | **Felt latency** |
 |-----------|-----------|--------|------------------|
-| Short (~2s speech) | ~1.1s | ~0.7s | **~1.9s** |
-| Long (~14s speech) | ~0.9s | ~2.1s | **~3.1s** |
+| Short (~2s speech) | ~1.7s | ~0.8s | **~2.4s** |
+| Long (~14s speech) | ~2.0s | ~2.3s | **~4.3s** |
 
-Long dictations drain *faster* than short ones because phrases were already
-transcribed while you were talking.
+Long dictations stay fast because phrases are transcribed while you're
+still talking; each phrase is decoded with the transcript so far as context.
 
-**Whisper model benchmark** (same machine, time to transcribe 2.3s / 14.3s of speech):
+**Whisper backend benchmark** (same machine, 2.3s / 14.3s of speech):
 
-| Model | Short | Long | Notes |
+| Backend / model | Short | Long | Notes |
 |-------|-------|------|-------|
-| `base.en` | 0.5s | 1.3s | fastest — try it via `WISPR_WHISPER_MODEL=base.en` |
-| `distil-small.en` | 1.1s | 1.5s | **default** — best speed/accuracy balance |
-| `small.en` | 1.8s | 4.9s | |
-| `large-v3-turbo` | 4.1s | 5.1s | most accurate; too slow on base M1 |
+| **MLX `large-v3-turbo` (GPU)** | 1.5s | 2.0s | **default** — best accuracy |
+| MLX `small.en` (GPU) | 0.4s | 1.2s | `WISPR_WHISPER_MODEL_MLX=mlx-community/whisper-small.en-mlx` |
+| CPU `distil-small.en` | 1.1s | 1.5s | `WISPR_STT_BACKEND=cpu` — fastest-feel option |
+| CPU `base.en` | 0.5s | 1.3s | `WISPR_STT_BACKEND=cpu WISPR_WHISPER_MODEL=base.en` |
+| CPU `large-v3-turbo` | 4.1s | 5.1s | don't — use the MLX backend instead |
 
 ---
 

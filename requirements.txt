@@ -13,7 +13,10 @@ torch>=2.1.0                # Required by silero-vad
 silero-vad>=5.1             # VAD model (pip package — audio.py imports silero_vad)
 
 # ── Speech-to-Text ────────────────────────────────────────────────────────────
-faster-whisper>=1.0.0       # CTranslate2-optimised Whisper (4–8× faster than whisper.py)
+faster-whisper>=1.0.0       # CPU fallback backend (Intel Macs / no MLX)
+mlx-whisper>=0.4.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'
+                            # Apple-GPU backend — runs large-v3-turbo ~3x faster
+                            # than CPU. Auto-selected on Apple Silicon.
 
 # ── AI Polish ─────────────────────────────────────────────────────────────────
 openai>=1.30.0              # Used as the HTTP client for Ollama's /v1 endpoint
