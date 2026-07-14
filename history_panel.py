@@ -19,6 +19,7 @@ import time
 
 import AppKit
 import objc
+import pyperclip
 import Quartz
 
 import history
@@ -87,6 +88,24 @@ class ClickTarget(AppKit.NSObject):
             # user's app is still frontmost and receives the Cmd+V.
             threading.Thread(target=_paste_later, args=(text,), daemon=True).start()
 
+    def copyRow_(self, sender):
+        idx = sender.tag()
+        if not (0 <= idx < len(_entries[0])):
+            return
+        try:
+            pyperclip.copy(_entries[0][idx]["text"])
+        except Exception:
+            return
+        # Brief "✓" feedback, then restore the label. Panel stays open so
+        # multiple entries can be copied in a row.
+        sender.setAttributedTitle_(_copy_title("✓"))
+        def _restore():
+            time.sleep(0.9)
+            AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(
+                lambda: sender.setAttributedTitle_(_copy_title("Copy"))
+            )
+        threading.Thread(target=_restore, daemon=True).start()
+
 
 def _paste_later(text: str):
     time.sleep(0.12)   # let the click event settle
@@ -95,6 +114,21 @@ def _paste_later(text: str):
 
 _entries: list[list[dict]] = [[]]
 _target = ClickTarget.alloc().init()
+
+
+def _copy_title(text: str) -> AppKit.NSAttributedString:
+    """Orange, centered attributed title for the per-row Copy button."""
+    para = AppKit.NSMutableParagraphStyle.alloc().init()
+    para.setAlignment_(AppKit.NSTextAlignmentCenter)
+    return AppKit.NSAttributedString.alloc().initWithString_attributes_(
+        text,
+        {
+            AppKit.NSFontAttributeName:
+                AppKit.NSFont.systemFontOfSize_weight_(11, AppKit.NSFontWeightSemibold),
+            AppKit.NSForegroundColorAttributeName: ORANGE,
+            AppKit.NSParagraphStyleAttributeName: para,
+        },
+    )
 
 
 def _label(text, size, color, weight=AppKit.NSFontWeightRegular):
@@ -139,9 +173,9 @@ def _build_content():
     title.setFrame_(AppKit.NSMakeRect(32, panel_h - 34, 200, 20))
     content.addSubview_(title)
 
-    hint = _label("click to paste  ·  ⌥ to close", 10, GREY)
+    hint = _label("click to paste  ·  Copy to clipboard  ·  ⌥ to close", 10, GREY)
     hint.setAlignment_(AppKit.NSTextAlignmentRight)
-    hint.setFrame_(AppKit.NSMakeRect(PANEL_W - 190, panel_h - 32, 172, 16))
+    hint.setFrame_(AppKit.NSMakeRect(PANEL_W - 300, panel_h - 32, 282, 16))
     content.addSubview_(hint)
 
     # ── Rows (scrollable) ──
@@ -174,7 +208,7 @@ def _build_content():
         cell.setWraps_(True)
         cell.setLineBreakMode_(AppKit.NSLineBreakByTruncatingTail)
         preview.setMaximumNumberOfLines_(2)
-        preview.setFrame_(AppKit.NSMakeRect(14, 8, PANEL_W - 40, 34))
+        preview.setFrame_(AppKit.NSMakeRect(14, 8, PANEL_W - 40 - 66, 34))
         row.addSubview_(preview)
 
         if i < len(entries) - 1:
@@ -193,6 +227,22 @@ def _build_content():
         btn.setTarget_(_target)
         btn.setAction_(objc.selector(_target.clickRow_, signature=b"v@:@"))
         row.addSubview_(btn)
+
+        # Copy button — added after the row overlay so it sits on top and
+        # receives its own clicks (copies to clipboard, panel stays open).
+        copy_btn = RowButton.alloc().initWithFrame_(
+            AppKit.NSMakeRect(PANEL_W - 12 - 62, ROW_H / 2 - 12, 50, 24))
+        copy_btn.setTitle_("Copy")
+        copy_btn.setBordered_(False)
+        copy_btn.setWantsLayer_(True)
+        copy_btn.layer().setBackgroundColor_(
+            Quartz.CGColorCreateGenericRGB(1.00, 0.55, 0.10, 0.16))
+        copy_btn.layer().setCornerRadius_(6.0)
+        copy_btn.setAttributedTitle_(_copy_title("Copy"))
+        copy_btn.setTag_(i)
+        copy_btn.setTarget_(_target)
+        copy_btn.setAction_(objc.selector(_target.copyRow_, signature=b"v@:@"))
+        row.addSubview_(copy_btn)
 
         doc.addSubview_(row)
 
