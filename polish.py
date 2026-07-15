@@ -137,13 +137,37 @@ def _chat(system: str, user: str, temperature: float) -> str:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+# Phrases that indicate the model responded instead of cleaning.
+_RESPONSE_PREFIXES = (
+    "this ", "the tool", "i can", "i will", "sure", "of course",
+    "certainly", "here is", "here's", "this tool", "this app",
+    "this does", "this cleans", "this removes", "this feature",
+)
+
+def _is_response(raw: str, polished: str) -> bool:
+    """
+    Return True if the model appears to have answered the text rather
+    than cleaned it. Two signals:
+      1. Output is significantly longer than input — cleaning never adds words.
+      2. Output starts with a known assistant-response phrase.
+    """
+    raw_words      = len(raw.split())
+    polished_words = len(polished.split())
+    if polished_words > raw_words * 1.3:
+        return True
+    first = polished.lower().lstrip("\"'").split()[0:4]
+    first_str = " ".join(first)
+    return any(first_str.startswith(p) for p in _RESPONSE_PREFIXES)
+
+
 def run(raw_text: str) -> str:
     """
     Polish `raw_text` through Ollama using a streaming response.
 
     Streaming means we start receiving cleaned tokens immediately rather
     than waiting for the full response — lower perceived latency.
-    Falls back to raw transcript if Ollama is unreachable.
+    Falls back to raw transcript if Ollama is unreachable or if the model
+    responds conversationally instead of cleaning.
     """
     if not raw_text.strip():
         return ""
@@ -151,6 +175,11 @@ def run(raw_text: str) -> str:
     try:
         polished = _chat(
             SYSTEM_PROMPT + vocab.polish_section(), raw_text, TEMPERATURE)
+
+        if _is_response(raw_text, polished):
+            print(f"[polish] Model responded instead of cleaning — using raw transcript.")
+            return raw_text
+
         print(f"[polish] Polished: {polished!r}")
         return polished
 
