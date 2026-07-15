@@ -21,6 +21,7 @@ import numpy as np
 
 import audio
 import transcribe
+import vocab
 
 # ── Tuning ────────────────────────────────────────────────────────────────────
 
@@ -94,10 +95,11 @@ def _worker_loop():
                     phrase = tail[start:end]
                     dur = len(phrase) / audio.SAMPLE_RATE
                     t0 = time.perf_counter()
-                    # Pass recent transcript as context — Whisper decodes a
-                    # phrase noticeably better when it knows what preceded it
-                    # (names, terminology, sentence flow).
-                    context = " ".join(_texts)[-400:] or None
+                    # Prompt = personal vocabulary + recent transcript.
+                    # The vocabulary biases Whisper toward the user's names
+                    # and jargon; the transcript tail gives it sentence flow.
+                    context = (vocab.whisper_prefix()
+                               + " ".join(_texts)[-350:]).strip() or None
                     text = transcribe.run(phrase, initial_prompt=context)
                     if text.strip():
                         _texts.append(text.strip())

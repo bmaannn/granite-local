@@ -34,6 +34,7 @@ import inject
 import overlay
 import history
 import history_ui
+import learn
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -97,11 +98,15 @@ def _run_pipeline():
 
         overlay.done()
 
-        # ── Save to history (best-effort; never break the pipeline) ────────
+        # ── Save to history + learn new vocabulary (both best-effort) ──────
         try:
             history.add(raw_text, polished_text)
         except Exception as exc:
             _status(f"history save failed: {exc}")
+        try:
+            learn.observe(polished_text)
+        except Exception as exc:
+            _status(f"vocab learning failed: {exc}")
 
         # ── Timing report ──────────────────────────────────────────────────
         _status(

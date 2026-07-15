@@ -139,6 +139,17 @@ HOTKEY = keyboard.Key.cmd_r   # Right-Cmd (default)
 WISPR_WHISPER_MODEL=base.en WISPR_MODEL=qwen2.5:7b python main.py
 ```
 
+### Personal vocabulary (names, jargon, products)
+Edit `~/.wispr-local/vocabulary.txt` — one word or phrase per line. Every
+dictation feeds this list to both Whisper (recognition bias) and the polish
+LLM (phonetic correction), so names like "Basith" come out right. Changes
+apply on the next dictation — no restart needed.
+
+**Auto-learning:** new out-of-dictionary words that appear in 2 separate
+dictations are added to the vocabulary automatically (`learn.py`). One-off
+transcription errors don't recur, so they never get learned; real names and
+jargon do. Tune with `PROMOTE_AFTER` in `learn.py`.
+
 ### Tune AI polish rules
 Edit `SYSTEM_PROMPT` in `polish.py` — e.g. add personal snippet rules:
 ```

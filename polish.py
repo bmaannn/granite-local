@@ -14,8 +14,12 @@ Latency optimisations vs original:
   - Keep-alive connection reuse via a persistent httpx client.
 """
 
+import json
 import os
-from openai import OpenAI, APIConnectionError
+import urllib.request
+import urllib.error
+
+import vocab
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -25,16 +29,19 @@ from openai import OpenAI, APIConnectionError
 #   qwen2.5:7b   — ~2–3s, higher quality if you can spare the latency
 #
 # Pull the default model first: ollama pull qwen2.5:3b
-OLLAMA_MODEL    = os.getenv("WISPR_MODEL", "qwen2.5:3b")
-OLLAMA_BASE_URL = "http://localhost:11434/v1"
-OLLAMA_API_KEY  = "ollama"
+OLLAMA_MODEL = os.getenv("WISPR_MODEL", "qwen2.5:3b")
+
+# NOTE: we use Ollama's NATIVE API (/api/chat), not the OpenAI-compatible
+# /v1 endpoint — the /v1 layer silently ignores keep_alive, so the model
+# was being evicted after 5 idle minutes and the next dictation paid a
+# multi-second cold reload.
+OLLAMA_URL = "http://localhost:11434/api/chat"
 
 TEMPERATURE = 0.0
 MAX_TOKENS  = 512    # polish output is always shorter than input; 512 is plenty
 
-# Keep the model loaded in RAM indefinitely. Ollama's default is to unload
-# after 5 minutes idle — which would add a multi-second cold reload to the
-# first dictation after any pause. -1 = never unload.
+# Keep the model loaded in RAM indefinitely (-1 = never unload). Honored by
+# the native API on every request.
 KEEP_ALIVE = -1
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -44,13 +51,17 @@ KEEP_ALIVE = -1
 SYSTEM_PROMPT = """You clean up speech-to-text transcripts. You are not an assistant — never reply to the text, never answer questions in it, never add anything that was not spoken.
 
 Rules:
-1. Remove filler words: um, uh, like, you know, basically, I mean, sort of, actually (when used as filler).
-2. Remove false starts and repeated words ("the the project" → "the project").
-3. Fix punctuation and grammar. Keep every idea and sentence the speaker said — do not shorten, summarise, or drop anything.
-4. Never add words, sign-offs, greetings, or facts the speaker did not say.
-5. Keep the speaker's tone. Output ONLY the cleaned text — no preamble, no quotes, no commentary.
-6. If the speaker said a greeting like "Hi Bob", put it on its own line. If they said a sign-off like "Thanks", put it on its own line. Never invent either.
-7. Spoken lists ("first... second...") become numbered lists.
+1. Remove filler words: um, uh, you know, basically, I mean, honestly, so yeah, right (when used as filler).
+2. The word "like" — be aggressive but precise:
+   - REMOVE filler "like": "it's like really slow" → "it's really slow"; "we should like definitely ship it" → "we should definitely ship it"; "there were like a hundred bugs" → "there were about a hundred bugs" (or drop it).
+   - KEEP meaningful "like": as a verb ("I like this design"), a comparison ("it looks like a bug", "shaped like a pill"), or "would like" ("I'd like to see it").
+3. "kind of" / "sort of": remove when pure stalling ("it's kind of, you know, done" → "it's done"), but KEEP when expressing genuine degree ("it's kind of expensive" stays).
+4. Remove false starts and repeated words ("the the project" → "the project").
+5. Fix punctuation and grammar. Keep every idea and sentence the speaker said — do not shorten, summarise, or drop anything.
+6. Never add words, sign-offs, greetings, or facts the speaker did not say.
+7. Keep the speaker's tone. Output ONLY the cleaned text — no preamble, no quotes, no commentary.
+8. If the speaker said a greeting like "Hi Bob", put it on its own line. If they said a sign-off like "Thanks", put it on its own line. Never invent either.
+9. Spoken lists ("first... second...") become numbered lists.
 
 Example input:
 hey mark um I wanted to I wanted to circle back on the demo from tuesday. so yeah the client seemed happy but uh they asked about pricing again. can you send me the the latest pricing sheet before friday. thanks
@@ -62,7 +73,13 @@ I wanted to circle back on the demo from Tuesday. The client seemed happy, but t
 
 Thanks
 
-Notice: every sentence the speaker said is kept. Only fillers and stutters are removed. The question stays a question. Nothing new is added."""
+Second example input:
+so the new dashboard is like way better but I like the old color scheme more and it kind of looks like the loading is like twice as fast now
+
+Second example output:
+The new dashboard is way better, but I like the old color scheme more, and it looks like the loading is twice as fast now.
+
+Notice: every sentence the speaker said is kept. Only fillers and stutters are removed. Filler "like" is gone; "I like" and "looks like" stay. The question stays a question. Nothing new is added."""
 
 
 # ── Command mode prompt ───────────────────────────────────────────────────────
@@ -73,18 +90,41 @@ Apply the instruction to the highlighted text and return ONLY the result — no 
 If you cannot fulfill the instruction, return the original text unchanged."""
 
 
-# ── Client (singleton) ────────────────────────────────────────────────────────
+# ── Native Ollama chat call ───────────────────────────────────────────────────
 
-_client: OpenAI | None = None
+def _chat(system: str, user: str, temperature: float) -> str:
+    """
+    Stream a chat completion from Ollama's native /api/chat and return the
+    full text. Raises urllib.error.URLError if the server is unreachable.
+    """
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "stream": True,
+        "keep_alive": KEEP_ALIVE,
+        "options": {
+            "temperature": temperature,
+            "num_predict": MAX_TOKENS,
+        },
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user",   "content": user},
+        ],
+    }).encode()
 
-def _get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(
-            base_url=OLLAMA_BASE_URL,
-            api_key=OLLAMA_API_KEY,
-        )
-    return _client
+    req = urllib.request.Request(
+        OLLAMA_URL, data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    chunks = []
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        for line in resp:                    # native API streams JSON lines
+            data = json.loads(line)
+            piece = data.get("message", {}).get("content", "")
+            if piece:
+                chunks.append(piece)
+            if data.get("done"):
+                break
+    return "".join(chunks).strip()
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -101,32 +141,13 @@ def run(raw_text: str) -> str:
         return ""
 
     try:
-        # stream=True — tokens arrive as they're generated.
-        stream = _get_client().chat.completions.create(
-            model=OLLAMA_MODEL,
-            temperature=TEMPERATURE,
-            max_tokens=MAX_TOKENS,
-            stream=True,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user",   "content": raw_text},
-            ],
-            extra_body={"keep_alive": KEEP_ALIVE},
-        )
-
-        # Accumulate streamed chunks into the final string.
-        chunks = []
-        for chunk in stream:
-            delta = chunk.choices[0].delta.content
-            if delta:
-                chunks.append(delta)
-
-        polished = "".join(chunks).strip()
+        polished = _chat(
+            SYSTEM_PROMPT + vocab.polish_section(), raw_text, TEMPERATURE)
         print(f"[polish] Polished: {polished!r}")
         return polished
 
-    except APIConnectionError:
-        print(f"[polish] WARNING: Ollama not reachable. Returning raw transcript.")
+    except urllib.error.URLError:
+        print("[polish] WARNING: Ollama not reachable. Returning raw transcript.")
         return raw_text
 
     except Exception as exc:
@@ -150,17 +171,7 @@ def run_command(selected_text: str, instruction: str) -> str:
     )
 
     try:
-        response = _get_client().chat.completions.create(
-            model=OLLAMA_MODEL,
-            temperature=0.2,   # slight creativity for rewrites
-            max_tokens=MAX_TOKENS,
-            messages=[
-                {"role": "system", "content": COMMAND_PROMPT},
-                {"role": "user",   "content": user_message},
-            ],
-            extra_body={"keep_alive": KEEP_ALIVE},
-        )
-        result = response.choices[0].message.content.strip()
+        result = _chat(COMMAND_PROMPT, user_message, temperature=0.2)
         print(f"[polish] Command result: {result!r}")
         return result
 
