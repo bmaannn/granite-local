@@ -15,28 +15,21 @@ import vocab
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-# Model selection — benchmarked on M1 16GB (see repo history):
-#   qwen2.5:3b   — ~0.8–2.4s, most faithful to the spoken content  ← DEFAULT
-#   llama3.2:3b  — similar speed, slightly less faithful (drops "?", digits)
-#   qwen2.5:7b   — ~2–3s, higher quality if you can spare the latency
-#
-# Pull the default model first: ollama pull qwen2.5:3b
+# IBM Granite 4.1 (3B) — default polish model. Full IBM stack.
+# Override with: WISPR_MODEL=gabegoodhart/granite4.1:3b python main.py
+# Pull first:    ollama pull gabegoodhart/granite4.1:3b
 OLLAMA_MODEL = os.getenv("WISPR_MODEL", "gabegoodhart/granite4.1:3b")
 
-# NOTE: we use Ollama's NATIVE API (/api/chat), not the OpenAI-compatible
-# /v1 endpoint — the /v1 layer silently ignores keep_alive, so the model
-# was being evicted after 5 idle minutes and the next dictation paid a
-# multi-second cold reload.
+# Uses Ollama's native /api/chat endpoint — the OpenAI-compatible /v1 layer
+# silently ignores keep_alive, causing the model to be evicted after 5 idle
+# minutes. The native API honors it on every request.
 OLLAMA_URL = "http://localhost:11434/api/chat"
 
 TEMPERATURE = 0.0
 MAX_TOKENS  = 300    # polish output is always shorter than input; 300 is plenty
 
-# Keep the model warm for 30 minutes after each use. Honored by the native
-# API on every request. Pinning forever (-1) sounds nice but permanently
-# wires ~2.2GB of GPU memory, which on a 16GB machine adds to the system-wide
-# memory pressure that slows Whisper down; 30m keeps an active dictation
-# session warm while letting the RAM go when you walk away.
+# Keep Granite loaded for 30 minutes after each use so back-to-back
+# dictations never pay a cold-reload penalty.
 KEEP_ALIVE = os.getenv("WISPR_KEEP_ALIVE", "30m")
 
 # ── System prompt ─────────────────────────────────────────────────────────────
