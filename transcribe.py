@@ -1,17 +1,15 @@
 """
-transcribe.py — Speech-to-Text: mlx-whisper (Apple GPU) with CPU fallback.
+transcribe.py — Speech-to-Text: IBM granite4.1-speech (default) with mlx/cpu fallback.
 
 Responsibility: Accept a float32 NumPy audio array at 16 kHz and return
 a raw transcript string (uncleaned — fillers intact).
 
 Backends:
-  mlx  — mlx-whisper on the Apple Silicon GPU. Runs large-v3-turbo (the
-         most accurate Whisper) several times faster than CPU. DEFAULT
-         when mlx-whisper is importable (i.e. on Apple Silicon).
-  cpu  — faster-whisper (CTranslate2, int8). Fallback for Intel Macs or
-         if mlx-whisper is missing. Uses a small model to stay responsive.
+  granite — IBM granite4.1-speech via Ollama. DEFAULT. Full IBM stack.
+  mlx     — mlx-whisper on Apple Silicon GPU. Fallback or override.
+  cpu     — faster-whisper (CTranslate2, int8). Fallback for Intel Macs.
 
-Force one with WISPR_STT_BACKEND=mlx|cpu.
+Force one with WISPR_STT_BACKEND=granite|mlx|cpu.
 
 `initial_prompt` lets the streaming layer pass already-transcribed text so
 each phrase is decoded with the context of what came before — noticeably
@@ -26,13 +24,12 @@ import numpy as np
 
 _FORCED = os.getenv("WISPR_STT_BACKEND", "").strip().lower()
 
-try:
-    if _FORCED == "cpu":
-        raise ImportError("cpu backend forced")
-    import mlx_whisper  # noqa: F401  (import check — used in _run_mlx)
-    BACKEND = "mlx"
-except ImportError:
-    BACKEND = "cpu"
+# Default to granite (IBM stack). Fall back to mlx on Apple Silicon,
+# then cpu if mlx is not available.
+if _FORCED in ("granite", "mlx", "cpu"):
+    BACKEND = _FORCED
+else:
+    BACKEND = "granite"   # IBM granite4.1-speech is the default
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 

@@ -1,17 +1,9 @@
 """
-polish.py — AI text polish via Ollama (OpenAI-compatible API).
+polish.py — AI text polish via IBM Granite 4.1 (Ollama).
 
 Responsibility: Accept a raw speech transcript and return clean, polished
 text with fillers removed, grammar fixed, and tone preserved — without
 adding information.
-
-Latency optimisations vs original:
-  - Switched to streaming response — we start receiving tokens immediately
-    and accumulate them, so perceived latency is lower.
-  - Switched default model to llama3.2:3b — ~3× faster than qwen2.5:7b
-    for simple cleanup tasks. Change OLLAMA_MODEL back to qwen2.5:7b for
-    higher quality if latency is acceptable on your hardware.
-  - Keep-alive connection reuse via a persistent httpx client.
 """
 
 import json
@@ -29,7 +21,7 @@ import vocab
 #   qwen2.5:7b   — ~2–3s, higher quality if you can spare the latency
 #
 # Pull the default model first: ollama pull qwen2.5:3b
-OLLAMA_MODEL = os.getenv("WISPR_MODEL", "qwen2.5:3b")
+OLLAMA_MODEL = os.getenv("WISPR_MODEL", "gabegoodhart/granite4.1:3b")
 
 # NOTE: we use Ollama's NATIVE API (/api/chat), not the OpenAI-compatible
 # /v1 endpoint — the /v1 layer silently ignores keep_alive, so the model
