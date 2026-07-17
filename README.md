@@ -207,7 +207,6 @@ Bob was used throughout the entire development lifecycle:
 - **Response detection** — Bob designed the `_is_response()` detector that catches cases where the LLM replies conversationally instead of cleaning, falling back to the raw transcript automatically
 - **Streaming architecture** — Bob designed the phrase-closing logic in `stream.py` so earlier phrases are transcribed while the user is still speaking, reducing key-release latency significantly
 - **macOS overlay** — Bob built the Cocoa/Core Animation waveform pill in `overlay_process.py`: the capsule shape, live mic-reactive bars, traveling-wave animations for transcribing/polishing states, and the fade-in/out lifecycle
-- **Codebase unification** — Bob merged two separate forks (wispr-local + granite-local) into one clean repo, removing all non-IBM model references and aligning everything to the IBM Granite stack
 - **Debugging & fixes** — throughout the build Bob diagnosed and fixed issues: `keep_alive` silently failing on the OpenAI-compatible Ollama endpoint, Python 3.14 incompatibility with `pyobjc-core`, CGEvent paste reliability, and VAD silence threshold tuning
 - **Documentation** — this README was written by Bob
 
