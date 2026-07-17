@@ -33,28 +33,20 @@ else:
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-# MLX (GPU) — small.en stays fast (~0.7s/phrase) even under memory pressure;
-# the personal vocabulary (vocab.py) covers names/jargon it would miss.
-# large-v3-turbo is more accurate but needs a fresh machine: under real-world
-# memory pressure (swap in use) it degrades to 4-5s per phrase on 16GB.
-#   WISPR_WHISPER_MODEL_MLX=mlx-community/whisper-large-v3-turbo  # max accuracy
+# MLX fallback — only used if WISPR_STT_BACKEND=mlx is explicitly set.
 MLX_MODEL = os.getenv(
     "WISPR_WHISPER_MODEL_MLX", "mlx-community/whisper-small.en-mlx")
 
-# CPU (faster-whisper) — benchmarked on M1 16GB (2.3s / 14.3s of speech):
-#   base.en          0.5s / 1.3s   — fastest
-#   distil-small.en  1.1s / 1.5s   — best speed/accuracy on CPU  ← DEFAULT
-#   small.en         1.8s / 4.9s
-#   large-v3-turbo   4.1s / 5.1s   — too slow on CPU; use the mlx backend
+# CPU fallback — only used if WISPR_STT_BACKEND=cpu is explicitly set.
 CPU_MODEL = os.getenv("WISPR_WHISPER_MODEL", "distil-small.en")
 
-# Pin to English for speed. Set to None for auto-detect.
+# Pin to English for speed.
 LANGUAGE = "en"
 
-# Hallucinated tokens Whisper emits for non-speech audio.
+# Noise tokens the speech model may emit for non-speech audio.
 _NOISE_TOKENS = ("[BLANK_AUDIO]", "(Music)", "[Music]", "(Silence)", "(Applause)")
 
-# ── CPU backend (faster-whisper) ──────────────────────────────────────────────
+# ── CPU fallback backend (faster-whisper) ─────────────────────────────────────
 
 _cpu_model = None
 
@@ -62,10 +54,10 @@ def _load_cpu_model():
     global _cpu_model
     if _cpu_model is None:
         from faster_whisper import WhisperModel
-        print(f"[transcribe] Loading Whisper '{CPU_MODEL}' (CPU) …")
+        print(f"[transcribe] Loading CPU fallback model '{CPU_MODEL}' …")
         _cpu_model = WhisperModel(
             CPU_MODEL, device="cpu", compute_type="int8", num_workers=2)
-        print("[transcribe] Whisper ready.")
+        print("[transcribe] CPU model ready.")
     return _cpu_model
 
 
@@ -102,7 +94,7 @@ def _run_mlx(audio: np.ndarray, initial_prompt: str | None) -> str:
     return result["text"].strip()
 
 
-# ── Public API ────────────────────────────────────────────────────────────────
+# ── Granite speech backend (Ollama) — DEFAULT ─────────────────────────────────
 
 def run(audio: np.ndarray, initial_prompt: str | None = None) -> str:
     """

@@ -174,10 +174,8 @@ def _status(msg: str):
 
 def _warm_up():
     """
-    Pre-load the Whisper model and prime the Ollama client at startup so
-    the first dictation doesn't pay the cold-start penalty.
-
-    Blueprint is silent on warm-up; added as a UX best practice.
+    Prime both Granite models at startup so the first dictation doesn't
+    pay the cold-start penalty.
     """
     # Fail loudly if we can't post keystrokes — otherwise every dictation
     # would silently vanish (CGEventPost drops events without Accessibility).
@@ -193,18 +191,18 @@ def _warm_up():
     print("[wispr] Warming up models (first run may take 30–60s) …")
     import numpy as np
 
-    # Tiny silent audio to force Whisper model download + load.
+    # Warm up granite4.1-speech (STT).
     dummy = np.zeros(SAMPLE_RATE * 1, dtype=np.float32)  # 1s silence
     try:
         transcribe.run(dummy)
     except Exception as exc:
-        print(f"[wispr] Whisper warm-up warning: {exc}")
+        print(f"[wispr] STT warm-up warning: {exc}")
 
-    # Tiny Ollama call to verify connectivity and load model into VRAM.
+    # Warm up granite4.1:3b (polish) and verify Ollama connectivity.
     try:
         polish.run("Hello.")
     except Exception as exc:
-        print(f"[wispr] Ollama warm-up warning: {exc}")
+        print(f"[wispr] Polish warm-up warning: {exc}")
 
     print("[wispr] Ready. Hold Right-⌘ to dictate. Tap Right-⌥ for history. "
           "Ctrl+C to quit.\n")

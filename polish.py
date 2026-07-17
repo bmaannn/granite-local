@@ -95,7 +95,7 @@ def _chat(system: str, user: str, temperature: float) -> str:
             "temperature": temperature,
             "num_predict": MAX_TOKENS,
             # Dictations are short; the default 4096 context wastes a few
-            # hundred MB of KV-cache memory we'd rather leave to Whisper.
+            # hundred MB of KV-cache memory we'd rather leave for other models.
             "num_ctx": 2048,
         },
         "messages": [

@@ -1,36 +1,33 @@
-# wispr-local requirements
+# granite-local requirements — IBM Granite stack
 # Install with: pip install -r requirements.txt
-#
-# Note: torch is required for silero-vad. The CPU-only build is ~200 MB
-# vs ~2 GB for CUDA. On Apple Silicon, MPS is available via the standard
-# torch build below.
+# Or run: bash setup.sh  (handles everything automatically)
 
 # ── Audio capture ─────────────────────────────────────────────────────────────
 sounddevice>=0.4.6          # Cross-platform low-latency mic access via PortAudio
 
 # ── Voice Activity Detection ─────────────────────────────────────────────────
 torch>=2.1.0                # Required by silero-vad
-silero-vad>=5.1             # VAD model (pip package — audio.py imports silero_vad)
+silero-vad>=5.1             # Silero VAD — trims silence before transcription
 
 # ── Speech-to-Text ────────────────────────────────────────────────────────────
-faster-whisper>=1.0.0       # CPU fallback backend (Intel Macs / no MLX)
+# Default: gabegoodhart/granite4.1-speech:2b via Ollama (no pip package needed)
+faster-whisper>=1.0.0       # CPU fallback (only used if WISPR_STT_BACKEND=cpu)
 mlx-whisper>=0.4.0 ; platform_machine == 'arm64' and sys_platform == 'darwin'
-                            # Apple-GPU backend — runs large-v3-turbo ~3x faster
-                            # than CPU. Auto-selected on Apple Silicon.
+                            # MLX fallback (only used if WISPR_STT_BACKEND=mlx)
 
 # ── AI Polish ─────────────────────────────────────────────────────────────────
-openai>=1.30.0              # Used as the HTTP client for Ollama's /v1 endpoint
-                            # (Ollama exposes an OpenAI-compatible REST API)
+# Default: gabegoodhart/granite4.1:3b via Ollama (no pip package needed)
+openai>=1.30.0              # HTTP client for Ollama's /v1 endpoint
 
 # ── Hotkey listener ───────────────────────────────────────────────────────────
-pynput>=1.7.6               # Global keyboard listener (works without focus)
+pynput>=1.7.6               # Global keyboard listener
 
 # ── Text injection ────────────────────────────────────────────────────────────
-pyperclip>=1.8.2            # Cross-platform clipboard read/write
+pyperclip>=1.8.2            # Clipboard read/write
 
 # ── Overlay UI + CGEvent paste (macOS native) ────────────────────────────────
 pyobjc-framework-Cocoa>=10.0   # AppKit/NSPanel for the status overlay
-pyobjc-framework-Quartz>=10.0  # Core Animation + CGEvent Cmd+V injection
+pyobjc-framework-Quartz>=10.0  # CGEvent Cmd+V injection + Core Animation
 
 # ── Numeric utilities ────────────────────────────────────────────────────────
 numpy>=1.24.0               # Audio array manipulation

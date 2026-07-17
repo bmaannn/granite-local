@@ -4,12 +4,9 @@ audio.py — Microphone capture with Silero VAD gate.
 Responsibility: Record audio from the default microphone for the duration
 the hotkey is held, apply a lightweight Voice Activity Detection pass to
 trim leading/trailing silence, and return a float32 NumPy array at 16 kHz
-ready for Whisper.
+ready for granite4.1-speech transcription.
 
-Blueprint deviation: We use the `silero-vad` pip package directly instead
-of torch.hub.load(). The hub variant requires `torchaudio` which has no
-Python 3.14 wheel yet. The pip package (pip install silero-vad) is the
-maintained distribution and has the same API without the torchaudio dep.
+Uses the `silero-vad` pip package for voice activity detection.
 """
 
 import threading
@@ -20,7 +17,7 @@ from silero_vad import load_silero_vad, get_speech_timestamps
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-SAMPLE_RATE = 16_000        # Whisper expects 16 kHz mono
+SAMPLE_RATE = 16_000        # granite4.1-speech expects 16 kHz mono
 CHANNELS    = 1             # Mono
 DTYPE       = "float32"     # sounddevice native float
 
@@ -120,7 +117,7 @@ def start_recording():
 
 def stop_recording() -> np.ndarray | None:
     """
-    Stop capturing and return VAD-trimmed audio ready for Whisper.
+    Stop capturing and return VAD-trimmed audio ready for transcription.
 
     Returns None if no speech was detected or the recording was too short.
     """

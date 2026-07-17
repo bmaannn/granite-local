@@ -1,7 +1,7 @@
 """
 stream.py — Incremental transcription while the user is still speaking.
 
-The Wispr Flow trick: don't wait for key-release to start transcribing.
+Streaming transcription: don't wait for key-release to start transcribing.
 While recording, a worker thread watches the audio buffer. Whenever VAD
 sees a finished phrase (speech followed by ≥ SILENCE_CLOSE_S of silence),
 that phrase is transcribed immediately in the background. On key-release
@@ -96,9 +96,9 @@ def _worker_loop():
                     dur = len(phrase) / audio.SAMPLE_RATE
                     t0 = time.perf_counter()
                     # Prompt = personal vocabulary + recent transcript.
-                    # The vocabulary biases Whisper toward the user's names
+                    # The vocabulary biases granite4.1-speech toward the user's names
                     # and jargon; the transcript tail gives it sentence flow.
-                    context = (vocab.whisper_prefix()
+                    context = (vocab.speech_prompt_prefix()
                                + " ".join(_texts)[-350:]).strip() or None
                     text = transcribe.run(phrase, initial_prompt=context)
                     if text.strip():
