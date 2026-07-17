@@ -1,8 +1,8 @@
 """
-main.py — Wispr Local: hold-to-talk AI dictation pipeline.
+main.py — granite-local: hold-to-talk IBM Granite AI dictation pipeline.
 
 Responsibility: Global hotkey listener that orchestrates the full pipeline:
-  Audio Capture → Speech-to-Text → AI Polish → Text Injection
+  Audio Capture → Speech-to-Text (granite4.1-speech) → AI Polish (granite4.1) → Text Injection
 
 Usage:
   python main.py
@@ -11,8 +11,8 @@ Hold Right-Cmd (⌘) to record. Release to transcribe, polish, and paste.
 Press Ctrl+C to quit.
 
 Measured felt latency on M1 16GB (key release → text pasted, models warm):
-  short dictation (~2s)  : ~1.9s
-  long dictation (~14s)  : ~3.1s  (phrases transcribe while you speak)
+  short dictation (~2s)  : ~1.0–1.5s
+  long dictation (~14s)  : ~2.0–3.0s  (phrases transcribe while you speak)
 
 macOS permissions required before running:
   1. Microphone        — System Settings → Privacy → Microphone
@@ -39,7 +39,7 @@ import learn
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 # The key that triggers record-on-hold / stop-on-release.
-# Blueprint spec: Right-Cmd. Change to e.g. keyboard.Key.alt_r for Right-Alt.
+# Default: Right-Cmd. Change to e.g. keyboard.Key.alt_r for Right-Alt.
 HOTKEY = keyboard.Key.cmd_r
 
 # Tap this key to toggle the dictation-history panel (click an entry to paste).
@@ -169,7 +169,7 @@ def on_release(key):
 
 def _status(msg: str):
     if VERBOSE_STATUS:
-        print(f"[wispr] {msg}")
+        print(f"[granite] {msg}")
 
 
 def _warm_up():
@@ -181,14 +181,14 @@ def _warm_up():
     # would silently vanish (CGEventPost drops events without Accessibility).
     if not inject.check_post_event_access():
         print(
-            "\n[wispr] ⚠️  PASTE WILL NOT WORK — Accessibility permission missing.\n"
-            "        Grant it to your terminal app in:\n"
-            "        System Settings → Privacy & Security → Accessibility\n"
-            "        (macOS should have just shown a prompt. After granting,\n"
-            "        QUIT and RESTART this app — macOS applies it on launch.)\n"
+            "\n[granite] ⚠️  PASTE WILL NOT WORK — Accessibility permission missing.\n"
+            "          Grant it to your terminal app in:\n"
+            "          System Settings → Privacy & Security → Accessibility\n"
+            "          (macOS should have just shown a prompt. After granting,\n"
+            "          QUIT and RESTART this app — macOS applies it on launch.)\n"
         )
 
-    print("[wispr] Warming up models (first run may take 30–60s) …")
+    print("[granite] Warming up IBM Granite models (first run may take 30–60s) …")
     import numpy as np
 
     # Warm up granite4.1-speech (STT).
@@ -196,15 +196,15 @@ def _warm_up():
     try:
         transcribe.run(dummy)
     except Exception as exc:
-        print(f"[wispr] STT warm-up warning: {exc}")
+        print(f"[granite] STT warm-up warning: {exc}")
 
     # Warm up granite4.1:3b (polish) and verify Ollama connectivity.
     try:
         polish.run("Hello.")
     except Exception as exc:
-        print(f"[wispr] Polish warm-up warning: {exc}")
+        print(f"[granite] Polish warm-up warning: {exc}")
 
-    print("[wispr] Ready. Hold Right-⌘ to dictate. Tap Right-⌥ for history. "
+    print("[granite] Ready. Hold Right-⌘ to dictate. Tap Right-⌥ for history. "
           "Ctrl+C to quit.\n")
 
 
@@ -221,7 +221,7 @@ def main():
         on_press=on_press,
         on_release=on_release,
         # suppress=False → do NOT suppress the hotkey from reaching other apps.
-        # Blueprint is silent; suppressing Right-Cmd would break normal usage.
+        # Suppressing Right-Cmd would break normal macOS usage.
         suppress=False,
     )
     listener.start()
@@ -231,7 +231,7 @@ def main():
         while listener.is_alive():
             time.sleep(0.5)
     except KeyboardInterrupt:
-        print("\n[wispr] Exiting.")
+        print("\n[granite] Exiting.")
     finally:
         listener.stop()
         sys.exit(0)
