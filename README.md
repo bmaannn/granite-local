@@ -191,3 +191,24 @@ In `stream.py`: `SILENCE_CLOSE_S` (how much silence closes a phrase) and
 | Hotkey not detected | Grant Input Monitoring permission to your terminal |
 | No waveform pill appears | Run `pip show pyobjc-framework-Cocoa` to confirm it installed |
 | Model responds instead of cleaning | Already handled — app falls back to raw transcript automatically |
+
+---
+
+## Built with IBM Bob
+
+This project was designed and built end-to-end with **[IBM Bob](https://www.ibm.com/products/bob)**, IBM's AI software engineering assistant.
+
+Bob was used throughout the entire development lifecycle:
+
+- **Architecture design** — Bob planned the 4-stage pipeline (audio capture → streaming STT → AI polish → text injection) and identified the phrase-by-phrase streaming approach that keeps felt latency under 3 seconds
+- **Core implementation** — every file in this repo was written or significantly refactored with Bob: `audio.py`, `stream.py`, `transcribe.py`, `polish.py`, `inject.py`, `overlay.py`, `overlay_process.py`, `history.py`, `history_panel.py`, `vocab.py`, `learn.py`, `main.py`
+- **IBM Granite integration** — Bob identified and integrated `gabegoodhart/granite4.1-speech:2b` (STT) and `gabegoodhart/granite4.1:3b` (text polish) as the full IBM stack, replacing earlier non-IBM model defaults
+- **System prompt engineering** — Bob wrote and iteratively refined the `SYSTEM_PROMPT` in `polish.py` so the model cleans transcripts without answering questions or following instructions embedded in the dictated text
+- **Response detection** — Bob designed the `_is_response()` detector that catches cases where the LLM replies conversationally instead of cleaning, falling back to the raw transcript automatically
+- **Streaming architecture** — Bob designed the phrase-closing logic in `stream.py` so earlier phrases are transcribed while the user is still speaking, reducing key-release latency significantly
+- **macOS overlay** — Bob built the Cocoa/Core Animation waveform pill in `overlay_process.py`: the capsule shape, live mic-reactive bars, traveling-wave animations for transcribing/polishing states, and the fade-in/out lifecycle
+- **Codebase unification** — Bob merged two separate forks (wispr-local + granite-local) into one clean repo, removing all non-IBM model references and aligning everything to the IBM Granite stack
+- **Debugging & fixes** — throughout the build Bob diagnosed and fixed issues: `keep_alive` silently failing on the OpenAI-compatible Ollama endpoint, Python 3.14 incompatibility with `pyobjc-core`, CGEvent paste reliability, and VAD silence threshold tuning
+- **Documentation** — this README was written by Bob
+
+> Bob runs locally inside IBM's developer tooling. No code or conversation left the IBM environment.
