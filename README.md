@@ -208,6 +208,4 @@ Bob was used throughout the entire development lifecycle:
 - **Streaming architecture** — Bob designed the phrase-closing logic in `stream.py` so earlier phrases are transcribed while the user is still speaking, reducing key-release latency significantly
 - **macOS overlay** — Bob built the Cocoa/Core Animation waveform pill in `overlay_process.py`: the capsule shape, live mic-reactive bars, traveling-wave animations for transcribing/polishing states, and the fade-in/out lifecycle
 - **Debugging & fixes** — throughout the build Bob diagnosed and fixed issues: `keep_alive` silently failing on the OpenAI-compatible Ollama endpoint, Python 3.14 incompatibility with `pyobjc-core`, CGEvent paste reliability, and VAD silence threshold tuning
-- **Documentation** — this README was written by Bob
-
 > Bob runs locally inside IBM's developer tooling. No code or conversation left the IBM environment.
