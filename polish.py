@@ -123,25 +123,53 @@ def _chat(system: str, user: str, temperature: float) -> str:
 # ── Public API ────────────────────────────────────────────────────────────────
 
 # Phrases that indicate the model responded instead of cleaning.
+# Keep this list broad — false positives fall back to raw transcript which is
+# still correct; false negatives let a response through which is wrong.
 _RESPONSE_PREFIXES = (
-    "this ", "the tool", "i can", "i will", "sure", "of course",
-    "certainly", "here is", "here's", "this tool", "this app",
-    "this does", "this cleans", "this removes", "this feature",
+    # explicit assistant openers
+    "sure", "of course", "certainly", "absolutely", "no problem",
+    "i can", "i will", "i would", "i'd be", "i understand",
+    "i don't", "i do not", "i'm not", "i am not",
+    "let me", "let's", "let us",
+    "here is", "here's", "here are",
+    "the tool", "this tool", "this app", "this does", "this cleans",
+    "this removes", "this feature", "this is",
+    "as a", "as an",
+    "great", "noted", "understood", "thanks", "thank you",
+    "hello", "hi there", "hey there",
+    "to clean", "to polish", "to answer",
+    # common refusals / meta-commentary
+    "i cannot", "i can't", "unfortunately", "i'm sorry", "i am sorry",
+    "sorry,", "sorry.", "sorry!", "apologies",
+    "it seems", "it looks like", "it appears",
+    "the input", "the text", "the transcript",
+    "you asked", "you said", "you want",
+    "your text", "your transcript", "your message",
 )
+
+# First-word verbs that almost always open a reply rather than cleaned text.
+_RESPONSE_FIRST_VERBS = {
+    "clean", "polish", "remove", "fix", "correct", "rewrite",
+    "sure", "noted", "understood", "absolutely", "certainly",
+}
 
 def _is_response(raw: str, polished: str) -> bool:
     """
     Return True if the model appears to have answered the text rather
-    than cleaned it. Two signals:
-      1. Output is significantly longer than input — cleaning never adds words.
+    than cleaned it. Three signals:
+      1. Output is >15% longer than input — cleaning never adds words.
       2. Output starts with a known assistant-response phrase.
+      3. Output's first word is a known reply verb (meta-commentary).
     """
     raw_words      = len(raw.split())
     polished_words = len(polished.split())
-    if polished_words > raw_words * 1.3:
+    if polished_words > raw_words * 1.15:
         return True
-    first = polished.lower().lstrip("\"'").split()[0:4]
-    first_str = " ".join(first)
+    normalized = polished.lower().lstrip("\"' \t\n")
+    first_word = normalized.split()[0] if normalized.split() else ""
+    if first_word in _RESPONSE_FIRST_VERBS:
+        return True
+    first_str = " ".join(normalized.split()[0:5])
     return any(first_str.startswith(p) for p in _RESPONSE_PREFIXES)
 
 

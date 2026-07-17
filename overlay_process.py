@@ -1,5 +1,5 @@
 """
-overlay_process.py — Wispr-Flow-style waveform pill overlay.
+overlay_process.py — waveform pill overlay.
 
 A small dark capsule at the bottom-center of the screen with live orange
 waveform bars. Always on top, never steals focus, ignores the mouse.
@@ -40,7 +40,7 @@ PAD_X     = 16.0       # horizontal padding inside the pill
 
 N_BARS = int((PILL_W - 2 * PAD_X + BAR_GAP) // (BAR_W + BAR_GAP))
 
-# Wispr-orange bar colour
+# Bar colour — orange
 BAR_COLOR = Quartz.CGColorCreateGenericRGB(1.00, 0.55, 0.10, 1.0)
 
 # ── NSApplication setup ───────────────────────────────────────────────────────
